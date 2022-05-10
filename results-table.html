@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="initial-scale=1, maximum-scale=1,user-scalable=no" />
+  <title>Results - Esri UC Virtual Run/Walk/Bike 2021</title>
+
+  <link rel="stylesheet" href="https://js.arcgis.com/4.19/esri/themes/light/main.css" />
+  <script src="https://js.arcgis.com/4.19/"></script>
+
+  <script type="module" src="https://js.arcgis.com/calcite-components/1.0.0-beta.52/calcite.esm.js"></script>
+  <script nomodule="" src="https://js.arcgis.com/calcite-components/1.0.0-beta.52/calcite.js"></script>
+  <link rel="stylesheet" type="text/css" href="https://js.arcgis.com/calcite-components/1.0.0-beta.52/calcite.css" />
+  
+  <style>
+    html,
+    body {
+      height: 100%;
+      width: 99%;
+      margin: 0;
+      margin-left:5px;
+      padding: 0;
+    }
+
+    .esri-button {
+      width: 200px;
+    }
+
+    .units {
+      float: right;
+    }
+
+    .container {
+      height: 600px; /*40%;*/
+      width: 100%;
+      margin-top:20px;
+    }
+  </style>
+  <script>
+    require([
+      "esri/core/watchUtils",
+      "esri/layers/FeatureLayer",
+      "esri/tasks/support/Query",
+      "esri/widgets/FeatureTable",
+      "esri/widgets/FeatureTable/Grid/Column"
+    ], function(
+      watchUtils,
+      FeatureLayer,
+      Query,
+      FeatureTable,
+      Column
+    ) {
+      const runFeatureLayer = new FeatureLayer({
+        url: "https://services2.arcgis.com/AhLa5Lu7BoubUElN/arcgis/rest/services/Fun_Run_dashboard_568bd7265ea34dd49b20ab1155aca00d/FeatureServer/1",
+        outFields: ["*"],
+        title: "Results RUN",
+        definitionExpression: "Mode = 'onFoot'"
+      });
+      const bikeFeatureLayer = new FeatureLayer({
+        url: "https://services2.arcgis.com/AhLa5Lu7BoubUElN/arcgis/rest/services/Fun_Run_dashboard_568bd7265ea34dd49b20ab1155aca00d/FeatureServer/1",
+        outFields: ["*"],
+        title: "Results BIKE",
+        definitionExpression: "Mode = 'onWheels'"
+      });
+      
+      // RANK SECTION 1 START
+      let runSortedSpeeds = [];
+      let bikeSortedSpeeds = [];
+      const runQuery = new Query({
+        returnGeometry: false,
+        outFields: ["speed_km"],
+        where: "distance_km > 4.9 AND Mode='onFoot'",
+        cacheHint: true,
+        orderByFields: ["speed_km DESC"]
+      });            
+      const bikeQuery = new Query({
+        returnGeometry: false,
+        outFields: ["speed_km"],
+        where: "distance_km > 19.9 AND Mode='onWheels'",
+        cacheHint: true,
+        orderByFields: ["speed_km DESC"]
+      });
+      [runFeatureLayer, bikeFeatureLayer].forEach(function(layer, index){
+        layer.load().then(function() {
+          var query = runQuery;
+          if (index == 1) {
+            query = bikeQuery
+          }
+          console.log(index, layer.title)
+          layer.queryFeatures(query).then(function(results) {
+            const features = results.features;
+            const sortedSpeeds = features.map(function(feature) {
+              return feature.attributes["speed_km"];
+            });
+            if (index == 0)
+              runSortedSpeeds = sortedSpeeds;
+            else
+              bikeSortedSpeeds = sortedSpeeds;
+          });
+        });
+      });
+      
+      // RANK SECTION 1 END
+      // Create the feature table
+      const fieldsForTable = [{
+            name: "nickname",
+            label: "Participant"
+          },
+          {
+            name: "distance_km",
+            label: "Distance (km)",
+            direction: "desc"
+          },
+          {
+            name: "speed_km",
+            label: "Speed (KPH)"
+          },
+          {
+            name: "pace_per_km",
+            label: "Pace (min/km)"
+          },
+          {
+            name: "distance_mi",
+            label: "Distance (mi)",
+            direction: "desc",
+            visible: false
+          },
+          {
+            name: "speed_mi",
+            label: "Speed (MPH)",
+            visible: false
+          },
+          {
+            name: "pace_per_mi",
+            label: "Pace (min/mi)",
+            visible: false
+          },
+          {
+            name: "status",
+            label: "Status",
+            visible: false
+          },
+          {
+            name: "Mode",
+            label: "Mode",
+            visible: false
+          }
+        ]
+      const runFeatureTable = new FeatureTable({
+        layer: runFeatureLayer,
+        container: document.getElementById("tableDivRun"),
+        fieldConfigs: fieldsForTable,
+        visibleElements: {header: false, menu: false, selectionColumn: false}
+      });
+      const bikeFeatureTable = new FeatureTable({
+        layer: bikeFeatureLayer,
+        container: document.getElementById("tableDivBike"),
+        fieldConfigs: fieldsForTable,
+        visibleElements: {header: false, menu: false, selectionColumn: false}
+      });
+      // Format the columns of results
+      watchUtils.watch(runFeatureTable, "columns.length", function(featureTable, length) {
+        formatColumns(runFeatureTable, length, false);
+      });
+      watchUtils.watch(bikeFeatureTable, "columns.length", function(featureTable, length) {
+        formatColumns(bikeFeatureTable, length, true);
+      });
+      // done formatting columns
+      
+      const metricUnitsBtn = document.getElementById("metricUnits");
+      const imperialUnitsBtn = document.getElementById("imperialUnits");
+      // Wire up button click event listeners
+      metricUnitsBtn.addEventListener("click", changeUnits);
+      imperialUnitsBtn.addEventListener("click", changeUnits);
+      
+      //Change units used in display 
+      //  - Show distance, speed, and pace in km, elevation in m
+      //  - Show distance, speed, and pace in mi, elevation in ft
+      function changeUnits() {
+        if (metricUnitsBtn.checked) {
+          [runFeatureTable,bikeFeatureTable].forEach(function (table) { table.showColumn("distance_km") });
+          [runFeatureTable,bikeFeatureTable].forEach(function (table) { table.showColumn("speed_km") });
+          [runFeatureTable,bikeFeatureTable].forEach(function (table) { table.showColumn("pace_per_km") });
+          [runFeatureTable,bikeFeatureTable].forEach(function (table) { table.hideColumn("distance_mi") });
+          [runFeatureTable,bikeFeatureTable].forEach(function (table) { table.hideColumn("speed_mi") });
+          [runFeatureTable,bikeFeatureTable].forEach(function (table) { table.hideColumn("pace_per_mi") });
+        } else {
+          [runFeatureTable,bikeFeatureTable].forEach(function (table) { table.hideColumn("distance_km") });
+          [runFeatureTable,bikeFeatureTable].forEach(function (table) { table.hideColumn("speed_km") });
+          [runFeatureTable,bikeFeatureTable].forEach(function (table) { table.hideColumn("pace_per_km") });
+          [runFeatureTable,bikeFeatureTable].forEach(function (table) { table.showColumn("distance_mi") });
+          [runFeatureTable,bikeFeatureTable].forEach(function (table) { table.showColumn("speed_mi") });
+          [runFeatureTable,bikeFeatureTable].forEach(function (table) { table.showColumn("pace_per_mi") });
+        }
+      }
+      
+      function formatColumns(featureTable, length, bike) {
+        if (length) {
+          // RANK SECTION 2 START
+          const items = featureTable.columns.items;
+          // Don't add virtual column a second time
+          // Prevents infinite loop
+          if (items[items.length - 1].path === "virtual-column") {
+            return;
+          }
+        } 
+          // Add ranking
+          var rankHeader = "Place (5K+)";
+          if (bike) {
+            rankHeader = "Place (20k+)";
+          }
+          featureTable.columns.add(
+            new Column({
+              store: featureTable.viewModel.store,
+              sortable: false,
+              path: "virtual-column",
+              header: rankHeader,
+              getCellValue: function(columnElement, rowData) {
+                const item = rowData.item;
+                const runIndex = runSortedSpeeds.indexOf(item.feature.attributes["speed_km"]);
+                const bikeIndex = bikeSortedSpeeds.indexOf(item.feature.attributes["speed_km"]);
+                if (item.feature.attributes["distance_km"] >= 4.9 && item.feature.attributes["Mode"] === "onFoot") {
+                  return runIndex !== undefined ? (runIndex + 1).toString() : "no"; 
+                } else if (item.feature.attributes["distance_km"] >= 19.9 && item.feature.attributes["Mode"] === "onWheels") {
+                  return bikeIndex !== undefined ? (bikeIndex + 1).toString() : "no"; 
+                } else {
+                  return "--";
+                }
+              }
+            })
+          );
+          // RANK SECTION 2 END
+          
+          featureTable.columns.items.forEach((item) => {
+            if (item.path !== "nickname") {
+              item.textAlign = "end";
+            }
+            if (item.path === "nickname") {
+              item.cellValueFormatFunction = function(params) {
+                participant = params.value;
+                if (participant == null || participant == "")
+                  participant = "Guest"
+                return "<a target='_blank' href='https://apl.bd.esri.com/UC2021Run/index.html?globalID=" + params.rowData.item.feature.attributes.GlobalID + "'>" + participant + "</a>";
+              };
+            } else if (item.path === "Mode") {
+              item.cellValueFormatFunction = function(params) {
+                if (params.value === 'onFoot')
+                  return "Run/Walk";
+                else
+                  return "Bike";
+              };
+            } else if (item.path === "distance_km" || item.path === "distance_mi") {
+              item.cellValueFormatFunction = function(params) {
+                let value = Math.round(10 * params.value) / 10;
+                return value ? value.toFixed(1).toString() : null;
+              };
+            } else if (item.path === "speed_km" || item.path === "speed_mi") {
+              item.cellValueFormatFunction = function(params) {
+                var value = Math.round(100 * params.value) / 100;
+                return value ? value.toFixed(2).toString() : null;
+              };
+            } else if (item.path === "pace_per_km" || item.path === "pace_per_mi") {
+              item.cellValueFormatFunction = function(params) {
+                var minutes = params.value;
+                var pacemin = Math.floor(minutes);
+                var pacesec = Math.round(60 * (minutes - pacemin)).toString().padStart(2, '0');;
+                var prettyPace = pacemin + ":" + pacesec;
+                return prettyPace ? prettyPace : null;
+              };
+            } else {
+              console.log("nope", item.path);
+            }
+          });
+        } 
+    });
+  </script>
+</head>
+
+<body>
+  <div id="unitActions" class="esri-widget units actions">
+    <fieldset class="radio-group">
+      <legend class="radio-group-title">Units</legend>
+      <input type="radio" id="metricUnits" name="units" value="km" checked>
+      <label for="metricUnits">kilometers</label>
+      <input type="radio" id="imperialUnits" name="units" value="mi">
+      <label for="imperialUnits">miles</label>
+    </fieldset>
+  </div>
+  <h1 style="display:block;">Results</h1>
+  <!--p>&nbsp;</p-->
+  <!--div class="container">
+    <h2>Run</h2>
+    <div id="tableDivRun"></div>
+    <h2>Bike</h2>
+    <div id="tableDivBike"></div>
+  </div-->
+  
+  <calcite-tabs>
+    <calcite-tab-nav slot="tab-nav">
+        <calcite-tab-title active>Run/Walk</calcite-tab-title>
+        <calcite-tab-title>Bike</calcite-tab-title>
+    </calcite-tab-nav>
+    <calcite-tab active class="container" ><div id="tableDivRun"></div></calcite-tab>
+    <calcite-tab class="container"><div id="tableDivBike"></div></calcite-tab>
+</calcite-tabs>
+</html>
