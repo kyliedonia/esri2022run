@@ -1,0 +1,274 @@
+<html>
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no" />
+  <title>How far along have we come?</title>
+  <style>
+    html,
+    body,
+    #viewDiv {
+      padding: 0;
+      margin: 0;
+      height: 100%;
+      width: 100%;
+      background: #0a0830;  
+    }
+
+    .esri-attribution {
+      color: #dddddd !important;
+      background-color: rgba(19, 18, 36, 0.7) !important;
+    }
+  </style>
+
+  <link rel="stylesheet" href="https://js.arcgis.com/4.19/esri/themes/light/main.css" />
+  <script src="https://js.arcgis.com/4.19/"></script>
+  <script>
+    const ANIMATION = true;
+    const ANIMATIONSPEED = 5; // How fast to grow the line (in ms for each frame)
+    const href = window.location.href;
+    const pageURL = new URL(href);
+    require([
+      "esri/core/watchUtils",
+      "esri/Color",
+      "esri/Map",
+      "esri/Graphic",
+      "esri/WebScene",
+      "esri/layers/FeatureLayer",
+      "esri/views/SceneView",
+      "esri/geometry/Point",
+      "esri/geometry/Polyline",
+      "esri/geometry/SpatialReference",
+      "esri/geometry/geometryEngine",
+      "esri/geometry/support/geodesicUtils"
+    ], function(
+      watchUtils,
+      Color,
+      Map,
+      Graphic,
+      WebScene,
+      FeatureLayer,
+      SceneView,
+      Point,
+      Polyline,
+      SpatialReference,
+      geometryEngine,
+      geodesicUtils
+    ) {
+      const ESRI = new Point({
+        x: -117.19569255061943,
+        y: 34.056084325030348,
+        spatialReference: new SpatialReference({
+          wkid: 4326
+        })
+      });
+      const view = new SceneView({
+        container: "viewDiv",
+        map: new WebScene({
+          portalItem: {
+            id: "13ee3fce1c64408b98d3f8a4756a8a52"
+          }
+        }),
+        alphaCompositingEnabled: true,
+        environment: {
+          background: {
+            type: "color",
+            color: [0, 0, 0, 0]
+          },
+          starsEnabled: false,
+          atmosphereEnabled: false
+        },
+        ui: {
+          components: ["attribution"]
+        }
+      });
+      view.when(() => {
+        watchUtils.whenFalseOnce(view, 'updating', () => {
+          const fillColor = new Color('rgba(246,114,89, 0.7)');
+          const centerColor = new Color('rgba(255,255,255,0.8)');
+          const textColor = new Color('rgb(255,255,255)');
+          const textHaloColor = new Color('rgb(246,114,89)');
+          const createLocationSymbol = (text, subtext, larger) => {
+            return {
+              type: "point-3d",
+              symbolLayers: [{
+                type: "text",
+                text: text,
+                material: {
+                  color: textColor
+                },
+                halo: {
+                  color: textHaloColor,
+                  size: 1.1
+                },
+                size: larger ? 32.0 : 21.0
+              },{
+                type: "text",
+                text: subtext,
+                material: {
+                  color: textColor
+                },
+                halo: {
+                  color: textHaloColor,
+                  size: 1.1
+                },
+                size: larger ? 27.0 : 16.0
+              }],
+              callout: {
+                type: "line",
+                size: 1.2,
+                color: centerColor
+              },
+              verticalOffset: {
+                screenLength: 250,
+                maxWorldLength: 800000,
+                minWorldLength: 80000
+              }
+            };
+          }
+          const graphicSoFar = new Graphic({
+            symbol: {
+              type: "line-3d",
+              symbolLayers: [{
+                  type: "line",
+                  size: 30.0,
+                  material: {
+                    color: fillColor
+                  },
+                  cap: "round",
+                  join: "round"
+                },
+                {
+                  type: "line",
+                  size: 15.0,
+                  material: {
+                    color: Color.blendColors(fillColor, centerColor, 0.25)
+                  },
+                  cap: "round",
+                  join: "round"
+                },
+                {
+                  type: "line",
+                  size: 5.0,
+                  material: {
+                    color: Color.blendColors(fillColor, centerColor, 0.5)
+                  },
+                  cap: "round",
+                  join: "round"
+                },
+                {
+                  type: "line",
+                  size: 1.5,
+                  material: {
+                    color: centerColor
+                  },
+                  cap: "round",
+                  join: "round"
+                }
+              ]
+            }
+          });
+          const locationSoFar = new Graphic({
+            symbol: createLocationSymbol(`0 km`, ``)
+          });
+          
+          view.graphics.addMany([graphicSoFar, locationSoFar]);
+          
+          var FL4sum = new FeatureLayer({
+            url: 'https://services2.arcgis.com/AhLa5Lu7BoubUElN/arcgis/rest/services/UC_2022_QC_Dashboard_View/FeatureServer/1'
+          });
+          FL4sum.load().then(statlayer => {
+            const statQuery = statlayer.createQuery();
+            statQuery.outStatistics = [{
+              onStatisticField: "distance_km",
+              statisticType: "sum",
+              outStatisticFieldName: "SUM_distance_km"
+            }];
+            statlayer.queryFeatures(statQuery).then(function(result) {
+              let DISTANCE = result.features[0].attributes.SUM_distance_km || 1;
+              const createAlong = distance => {
+                let path = [
+                  [ESRI.x, ESRI.y]
+                ];
+                if (distance > 18000) {
+                  const CURRENT1 = geodesicUtils.pointFromDistance(ESRI, 18000 * 1000.0, 90.0);
+                  path.push([CURRENT1.x, CURRENT1.y]);
+                }
+                const CURRENT = geodesicUtils.pointFromDistance(ESRI, distance * 1000.0, 90.0);
+                path.push([CURRENT.x, CURRENT.y]);
+                //console.log(`Current distance of ${distance}/${DISTANCE} km takes us to ${CURRENT.latitude}, ${CURRENT.longitude}`);
+                const lineSoFar = new Polyline({
+                  paths: [path],
+                  spatialReference: {
+                    wkid: 4326
+                  }
+                });
+                return {
+                  along: geodesicUtils.geodesicDensify(lineSoFar, 30000.0),
+                  location: CURRENT
+                };
+              };
+              const viewScale = view.scale;
+              const integer = new Intl.NumberFormat('default', {
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 0
+              });
+              const updateAlong = (distance, larger) => {
+                const alongInfo = createAlong(distance);
+                graphicSoFar.geometry = alongInfo.along;
+                locationSoFar.geometry = alongInfo.location;
+                if (distance >= DISTANCE) {
+                  locationSoFar.symbol = createLocationSymbol(`${integer.format(distance)} km`,`\n\n${integer.format(distance / 40054 * 100)}%`, larger);
+                } else {
+                  locationSoFar.symbol = createLocationSymbol(``, ``, larger);
+                }
+                return view.goTo({
+                  target: locationSoFar.geometry,
+                  scale: viewScale,
+                  tilt: 45.0
+                }, {
+                  animate: false
+                }).catch(error => {
+                  console.log("error:", error)
+                });
+              }
+              let step = 100.0;
+              let along = step;
+              const displayAlong = () => {
+                if (along >= DISTANCE) {
+                  updateAlong(DISTANCE, true);
+                  /* ONCE IS ENOUGH
+                  setTimeout(() => {
+                    along = step;
+                    requestAnimationFrame(displayAlong);
+                  }, 2500);
+                  */
+                } else {
+                  updateAlong(along);
+                  setTimeout(() => {
+                    //along += (step + (Math.random() * step));
+                    along += step;
+                    requestAnimationFrame(displayAlong);
+                  }, ANIMATIONSPEED); // was 1000
+                }
+              };
+              const urlParams = new URLSearchParams(window.location.search);
+              const animate = urlParams.get('animate') || "true"; // was boolean true
+              if (ANIMATION && animate && (animate === "true") && (view.width > 480)) {
+                displayAlong();
+              } else {
+                updateAlong(DISTANCE, false);
+              }
+            });
+          }).catch(console.error);
+        });
+      });
+    });
+  </script>
+</head>
+
+<body>
+  <div id="viewDiv"></div>
+</body>
+
+</html>
